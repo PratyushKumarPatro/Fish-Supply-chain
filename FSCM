@@ -109,23 +109,22 @@ contract Registration{
 }
 
 contract FarmedFish{
-    
+
     string public SpeciesName;
     string public GeographicOrigin;
     uint public NumberOfFishSeedsAvailable;
-    string public FishSeedsPCRResultReportID;
+    address FishSeedsPCRResultReportID;
     string public AquacultureWaterType;
-    string public IPFS_Hash;
+    address IPFS_Hash;
     address registrationContract;
     address public FishSeedCompany;
 
     Registration RegistrationContract; 
 
     
+    event FishSeedsDescriptionsSet (string SpeciesName, string GeographicOrigin, uint NumberOfFishSeedsAvailable, address FishSeedsPCRResultReportID,string AquacultureWaterType, address IPFS_Hash);
     
-    event FishSeedsDescriptionsSet (string SpeciesName, string GeographicOrigin, uint NumberOfFishSeedsAvailable, string FishSeedsPCRResultReportID,string AquacultureWaterType, string IPFS_Hash);
-    
-    constructor(address registration, string memory Speciesname, string memory Geographicorigin, uint NumberOfFishSeedsavailable, string memory FishSeedsPCRResultreportId, string memory AquacultureWatertype, string memory IPFShash) public {
+    constructor(address registration, string memory Speciesname, string memory Geographicorigin, uint NumberOfFishSeedsavailable, address FishSeedsPCRResultreportId, string memory AquacultureWatertype, address IPFShash) public {
        RegistrationContract=Registration(registration);
         
         if(!RegistrationContract.FishSeedCompanyExists(msg.sender))
@@ -150,177 +149,144 @@ contract FarmedFish{
       _;
     }
 
-    enum status {Accepted, Rejected, Pending}
+    enum status {Accepted, Rejected, Pending, Arrived, Received, Updated}
     
     struct FishSeedsPurchaseOrderDetails{
-        address FishSeedsPurchaser;
-        address FishSeedsPurchaseOrderReceiver;
-        uint NumberOfFishSeedsRequested;
+        address purchaser;
+        address seller;
+        uint NumberOfFishSeedsOrdered;
         status FishSeedsPurchaseOrderDetailsStatus;
     }
        
-    event FishSeedsPurchaseOrderPlaced (bytes32 FishSeedsPurchaseOrderID, address FishSeedsPurchaseOrderReceiver, uint NumberOfFishSeedsRequested);
-    event FishSeedsPurchaseOrderAccepted(bytes32 FishSeedsPurchaseOrderID, status FishSeedsPurchaseOrderDetailsStatus);
+    event FishSeedsPurchaseOrderPlaced(bytes32 FishSeedsPurchaseOrderID,address FishSeedsPurchaser,address FishSeedsSeller,uint NumberOfFishSeedsOrdered);
+    event FishSeedsPurchaseOrderConfirmed(bytes32 FishSeedsPurchaseOrderID,status NEWSTatus);
+    event FishsSeedsOrderReceived(bytes32 FishSeedsPurchaseOrderID);
+
     
     modifier onlyFishSeedsPurchaser{
         require(RegistrationContract.FishFarmerExists(msg.sender),
         "Sender not authorized.");
         _;
     }
-    modifier onlyFishSeedsPurchaseOrderReceiver{
+    modifier onlyFishSeedsSeller{
         require(RegistrationContract.FishSeedCompanyExists(msg.sender),
         "Sender not authorized.");
         _;
     }
 
     mapping (bytes32=>FishSeedsPurchaseOrderDetails) public GetFishSeedsPurchaseOrderID;
-    function PlaceFishSeedsPurchaseOrder ( address FishSeedsPurchaser, address FishSeedsPurchaseOrderReceiver, uint NumberOfFishSeedsRequested) public onlyFishSeedsPurchaser{
+    function PlaceFishSeedsPurchaseOrder(address FishSeedsPurchaser,address FishSeedsSeller,uint NumberOfFishSeedsOrdered) public onlyFishSeedsPurchaser{
         require(RegistrationContract.FishFarmerExists(FishSeedsPurchaser),
         "FishSeedPurchaser not authorized.");
-        bytes32 temp=keccak256(abi.encodePacked(msg.sender, now, address(this), NumberOfFishSeedsRequested));
-        GetFishSeedsPurchaseOrderID [temp]=FishSeedsPurchaseOrderDetails(FishSeedsPurchaser, FishSeedsPurchaseOrderReceiver, NumberOfFishSeedsRequested, status.Pending);
-    emit FishSeedsPurchaseOrderPlaced (temp, FishSeedsPurchaseOrderReceiver, NumberOfFishSeedsRequested);
+        bytes32 temp=keccak256(abi.encodePacked(msg.sender,now,address(this),FishSeedsSeller,NumberOfFishSeedsOrdered));
+        GetFishSeedsPurchaseOrderID[temp]=FishSeedsPurchaseOrderDetails(msg.sender,FishSeedsSeller,NumberOfFishSeedsOrdered,status.Pending);
+        emit FishSeedsPurchaseOrderPlaced(temp,msg.sender,FishSeedsSeller,NumberOfFishSeedsOrdered);
 
     }
-    function AcceptFishSeedsPurchaseOrder (bytes32 FishSeedsPurchaseOrderID, bool Accepted) public onlyFishSeedsPurchaseOrderReceiver{
-        require(GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].FishSeedsPurchaseOrderReceiver==msg.sender,
-        "FishSeedsCompany is not authorized.");
-
+    function ConfirmFishSeedsPurchaseOrder(bytes32 FishSeedsPurchaseOrderID,bool accepted) public onlyFishSeedsSeller{
+        require(GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].seller==msg.sender,
+        "FishSeedsCompany is not authorized."
+        );
         require(GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].FishSeedsPurchaseOrderDetailsStatus==status.Pending);
-        if(Accepted){
-            GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].FishSeedsPurchaseOrderDetailsStatus==status.Accepted;
+
+        if(accepted){
+            GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].FishSeedsPurchaseOrderDetailsStatus=status.Accepted;
         }
         else {
-            GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].FishSeedsPurchaseOrderDetailsStatus==status.Rejected;
+            GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].FishSeedsPurchaseOrderDetailsStatus=status.Rejected;
         }
-        emit FishSeedsPurchaseOrderAccepted(FishSeedsPurchaseOrderID, GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].FishSeedsPurchaseOrderDetailsStatus);
+        emit FishSeedsPurchaseOrderConfirmed(FishSeedsPurchaseOrderID,GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].FishSeedsPurchaseOrderDetailsStatus);
     
     }
-    
-    struct  FishSeedsShipmentDetails{
-        address FishSeedsShipmentSender;
-        address FishSeedsShipmentReceiver;
-        bytes32 ShipmentID;
-        uint NumberOfFishSeedsSent;
-        status FishSeedsShipmentDetailsStatus;
-    }
-    mapping (bytes32=>FishSeedsShipmentDetails) public GetFishSeedsShipmentDetails;
-    modifier onlyFishSeedsShipmentReceiver{
-        require(RegistrationContract.FishFarmerExists(msg.sender),
-        "Sender not authorized.");
-        _;
-    }
-    
-    event FishSeedsShipmentInitiated (address FishSeedsShipmentSender, address FishSeedsShipmentReceiver, bytes32 ShipmentID, uint NumberOfFishSeedsSent);
-    function InitiateFishSeedsShipment (address FishSeedsShipmentSender, address FishSeedsShipmentReceiver, bytes32 ShipmentID, uint NumberOfFishSeedsSent) public onlyFishSeedCompany{
-        require(RegistrationContract.FishSeedCompanyExists(FishSeedsShipmentSender),
-        "FishSeedsShipmentSender is not authorized.");
         
-        emit FishSeedsShipmentInitiated (FishSeedsShipmentSender,  FishSeedsShipmentReceiver, ShipmentID, NumberOfFishSeedsSent);    
+    function ReceiveFishSeedsOrder(bytes32 FishSeedsPurchaseOrderID) public onlyFishSeedsPurchaser{
+        require(GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].purchaser==msg.sender,
+        "Sender not authorized." );
+        require(keccak256(abi.encodePacked(GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].FishSeedsPurchaseOrderDetailsStatus)) == keccak256(abi.encodePacked(status.Accepted)), "The shipment has not arrived yet");
+
+        GetFishSeedsPurchaseOrderID[FishSeedsPurchaseOrderID].FishSeedsPurchaseOrderDetailsStatus=status.Received;
+        
+        emit FishsSeedsOrderReceived(FishSeedsPurchaseOrderID);
     }
 
-    event FishSeedsShipmentReceived(bytes32 ShipmentID, status FishSeedsShipmentDetailsStatus);
-    function ReceiveFishSeedsShipment(bytes32 ShipmentID, bool Accepted) public onlyFishSeedsShipmentReceiver{
-        require(GetFishSeedsShipmentDetails[ShipmentID].FishSeedsShipmentReceiver==msg.sender,
-        "FishSeedsShipmentReceiver is not authorized.");
-       require(GetFishSeedsShipmentDetails[ShipmentID].FishSeedsShipmentDetailsStatus==status.Pending);
-        if(Accepted){
-            GetFishSeedsShipmentDetails[ShipmentID].FishSeedsShipmentDetailsStatus==status.Accepted;
-        }
-        else {
-            GetFishSeedsShipmentDetails[ShipmentID].FishSeedsShipmentDetailsStatus==status.Rejected;
-         emit FishSeedsShipmentReceived(ShipmentID,GetFishSeedsShipmentDetails[ShipmentID].FishSeedsShipmentDetailsStatus);
-        }
-    }
-    
-    struct  FishGrowthDetails{
-        address FishGrowthDetailsUploader;
-        uint WeightOfEachFish;
+    struct  FarmedFishGrowthDetails{
+        address FarmedFishGrowthDetailsUploader;
+        uint FishWeight;
         uint TotalNumberOfFish;
         string speciesname;
-        
+        address IPFShash;
+
+        status FarmedFishGrowthDetailsStatus;
     } 
 
-    modifier onlyFishGrowthDetailsUploader{
+    modifier onlyFarmedFishGrowthDetailsUploader{
         require(RegistrationContract.FishFarmerExists(msg.sender),
         "Sender not authorized.");
         _;
     } 
-    mapping (bytes32=>FishGrowthDetails) public GetFishGrowthDetails;
-    event FishGrowthDetailsUpdated(address FishGrowthDetailsUploader, uint WeightOfEachFish,uint TotalNumberOfFish, string speciesname );
-    function UpdateFishGrowthDetails(address FishGrowthDetailsUploader, uint WeightOfEachFish,uint TotalNumberOfFish, string memory speciesname) public onlyFishGrowthDetailsUploader{
-        require(RegistrationContract.FishFarmerExists(FishGrowthDetailsUploader),
+    mapping (bytes32=>FarmedFishGrowthDetails) public GetFarmedFishGrowthDetailsID;
+    event FarmedFishGrowthDetailsUpdated(bytes32 FarmedFishGrowthDetailsID, address FishGrowthDetailsUploader, uint FishWeight,uint TotalNumberOfFish, string speciesname );
+    function UpdateFarmedFishGrowthDetails(address FarmedFishGrowthDetailsUploader, uint FishWeight,uint TotalNumberOfFish, string memory speciesname, address IPFShash) public onlyFarmedFishGrowthDetailsUploader{
+        require(RegistrationContract.FishFarmerExists(FarmedFishGrowthDetailsUploader),
         "FishFarmer is not authorized.");
+        bytes32 tebp= keccak256(abi.encodePacked(msg.sender, now, address(this),TotalNumberOfFish,FishWeight,speciesname ));
+        GetFarmedFishGrowthDetailsID[tebp]=FarmedFishGrowthDetails(FarmedFishGrowthDetailsUploader,FishWeight, TotalNumberOfFish,speciesname, IPFShash,status.Updated);
 
-        emit FishGrowthDetailsUpdated (FishGrowthDetailsUploader, WeightOfEachFish, TotalNumberOfFish,speciesname);
+        emit FarmedFishGrowthDetailsUpdated (tebp, FarmedFishGrowthDetailsUploader, FishWeight, TotalNumberOfFish,speciesname);
     }
-    modifier onlyFishPurchaser{
+    modifier onlyFarmedFishPurchaser{
         require(RegistrationContract.FishProcessorExists(msg.sender),
         "Sender not authorized.");
         _;
     } 
 
-    struct FishPurchaseOrderDetails{
-        address FishPurchaser;
+    modifier onlyFarmedFishSeller{
+        require(RegistrationContract.FishFarmerExists(msg.sender),
+        "Sender not authorized.");
+        _;
+    } 
+
+    struct FarmedFishPurchaseOrderDetails{
+        address FarmedFishpurchaser;
         uint NumberOfFishOrdered; 
         string speciesname;
+        address FarmedFishseller;
 
-        status FishPurchaseOrderDetailsStatus;
+        status FarmedFishPurchaseOrderDetailsStatus;
     }
-    mapping (bytes32=>FishPurchaseOrderDetails) public GetFishPurchaseOrderID;
-    event FishPurchaseOrderPlaced (bytes32 FishPurchaseOrderID, address FishPurchaser);
-    function PlaceFishPurchaseOrder (address FishPurchaser, uint NumberOfFishOrdered,string memory speciesname) public onlyFishPurchaser{
-        require(RegistrationContract.FishProcessorExists(FishPurchaser),
+    mapping (bytes32=>FarmedFishPurchaseOrderDetails) public GetFarmedFishPurchaseOrderID;
+    event FarmedFishPurchaseOrderPlaced (bytes32 FarmedFishPurchaseOrderID);
+    event FarmedFishPurchaseOrderReceived (bytes32 FarmedFishPurchaseOrderID, status NEWStatus);
+    event FarmedFishOrderReceived (bytes32 FarmedFishPurchaseOrderID);
+
+    function PlaceFarmedFishPurchaseOrder (address FarmedFishPurchaser, uint NumberOfFishOrdered,string memory speciesname, address FarmedFishSeller) public onlyFarmedFishPurchaser{
+        require(RegistrationContract.FishProcessorExists(FarmedFishPurchaser),
         "FishProcessor not authorized.");
         bytes32 temp1=keccak256(abi.encodePacked(msg.sender, NumberOfFishOrdered,speciesname));
-        GetFishPurchaseOrderID [temp1]=FishPurchaseOrderDetails(FishPurchaser,NumberOfFishOrdered,speciesname, status.Pending);
-        emit FishPurchaseOrderPlaced(temp1,FishPurchaser);
+        GetFarmedFishPurchaseOrderID [temp1]=FarmedFishPurchaseOrderDetails(FarmedFishPurchaser,NumberOfFishOrdered,speciesname,FarmedFishSeller, status.Pending);
+        emit FarmedFishPurchaseOrderPlaced(temp1);
     }
-
-    struct FishShipmentDetails{
-        bytes32 FishPurchaseOrderID;
-        address FishShipmentSender;
-        address FishShipmentReceiver;
-        uint NumberOfFishLots;
-        uint FishLotSize;
-       status FishShipmentDetailsStatus; 
-    }
-
-    modifier onlyFishShipmentSender{
-        require(RegistrationContract.FishFarmerExists(msg.sender),
-        "Sender not authorized.");
-        _;
-    }
-    modifier onlyFishShipmentReceiver{
-        require(RegistrationContract.FishProcessorExists(msg.sender),
-        "Sender not authorized.");
-        _;
-    }
-    mapping (bytes32=>FishShipmentDetails) public GetFishShipmentID;
-    
-    event FishShipmentInitiated(bytes32 FishShipmentID, bytes32 FishPurchaseOrderID, address FishShipmentSender,address FishShipmentReceiver,uint NumberOfFishLots, uint FishLotSize);
-    event FishShipmentReceived(bytes32 FishShipmentID,status FishShipmentDetailsStatus );
-
-    function InitiateFishShipment(bytes32 FishShipmentID, bytes32 FishPurchaseOrderID, address FishShipmentSender,address FishShipmentReceiver,uint NumberOfFishLots, uint FishLotSize) public onlyFishShipmentSender{
-        require(RegistrationContract.FishFarmerExists(FishShipmentSender),
-         "FishSeedsShipmentSender is not authorized.");
-        
-        emit FishShipmentInitiated (FishShipmentID, FishPurchaseOrderID,  FishShipmentSender, FishShipmentReceiver, NumberOfFishLots,FishLotSize); 
-    }
-    function ReceiveFishShipment(bytes32 FishShipmentID, bool Accepted) public onlyFishShipmentReceiver{
-        require (GetFishShipmentID[FishShipmentID].FishShipmentReceiver==msg.sender,
-        "FishShipmentReceiver is not authorized.");
-       require(GetFishShipmentID[FishShipmentID].FishShipmentDetailsStatus==status.Pending);
+    function ConfirmFarmedFishPurchaseOrder(bytes32 FarmedFishPurchaseOrderID, bool Accepted) public onlyFarmedFishSeller{
+        require (GetFarmedFishPurchaseOrderID[FarmedFishPurchaseOrderID].FarmedFishseller==msg.sender,
+        "FarmedFishPOReceiver is not authorized.");
+       require(GetFarmedFishPurchaseOrderID[FarmedFishPurchaseOrderID].FarmedFishPurchaseOrderDetailsStatus==status.Pending);
         if(Accepted){
-            GetFishShipmentID[FishShipmentID].FishShipmentDetailsStatus==status.Accepted;
+            GetFarmedFishPurchaseOrderID[FarmedFishPurchaseOrderID].FarmedFishPurchaseOrderDetailsStatus=status.Accepted;
         }
         else {
-            GetFishShipmentID[FishShipmentID].FishShipmentDetailsStatus==status.Rejected;
-         emit FishShipmentReceived(FishShipmentID,GetFishShipmentID[FishShipmentID].FishShipmentDetailsStatus);
+            GetFarmedFishPurchaseOrderID[FarmedFishPurchaseOrderID].FarmedFishPurchaseOrderDetailsStatus=status.Rejected;
         }
-    
+        emit FarmedFishPurchaseOrderReceived(FarmedFishPurchaseOrderID,GetFarmedFishPurchaseOrderID[FarmedFishPurchaseOrderID].FarmedFishPurchaseOrderDetailsStatus);
     }
-    
+    function ReceiveFarmedFishOrder(bytes32 FarmedFishPurchaseOrderID) public onlyFarmedFishPurchaser{
+        require(GetFarmedFishPurchaseOrderID [FarmedFishPurchaseOrderID]. FarmedFishpurchaser==msg.sender,
+        "Sender not authorized." );
+        require(keccak256(abi.encodePacked(GetFarmedFishPurchaseOrderID [FarmedFishPurchaseOrderID]. FarmedFishPurchaseOrderDetailsStatus)) == keccak256(abi.encodePacked(status.Accepted)), "The shipment has not arrived yet");
+
+        GetFarmedFishPurchaseOrderID[FarmedFishPurchaseOrderID].FarmedFishPurchaseOrderDetailsStatus =status.Received;
+        
+        emit FarmedFishOrderReceived(FarmedFishPurchaseOrderID);
+    }
 }
 
 contract WildCaughtFish{
@@ -328,18 +294,17 @@ contract WildCaughtFish{
     string public SpeciesName;
     string public GeographicOrigin;
     string public TypeOfEcosystem;
-    uint public NumberOfWildCaughtFish;
+    uint public NumberOfWildCaughtFishAvaliable;
     string public WaterType;
     uint public DateOfCatch;
     address registrationContract;
     address public WildCaughtFisher;
-    string public FishID;
     
     Registration RegistrationContract;
 
-    event WildCaughtFishDetailsUpdated (string SpeciesName, string GeographicOrigin, string TypeOfEcosystem, uint NumberOfWildCaughtFish, string WaterType,uint DateOfCatch, address WildCaughtFisher);
+    event WildCaughtFishDetailsUpdated (string SpeciesName, string GeographicOrigin, string TypeOfEcosystem, uint  NumberOfWildCaughtFishAvaliable, string WaterType,uint DateOfCatch, address WildCaughtFisher);
 
-    constructor(address registration, string memory Speciesname, string memory Geographicorigin, string memory TypeOfEcoSystem, string memory Watertype,  uint DateofCatch) public {
+    constructor(address registration, string memory Speciesname, string memory Geographicorigin, string memory TypeOfEcoSystem, uint NumberOfWildCaughtfishavailable, string memory Watertype,  uint DateofCatch) public {
        RegistrationContract=Registration(registration);
         
         if(!RegistrationContract.WildCaughtFisherExists(msg.sender))
@@ -350,350 +315,367 @@ contract WildCaughtFish{
         SpeciesName=Speciesname;
         GeographicOrigin=Geographicorigin;
         TypeOfEcosystem=TypeOfEcoSystem;
+        NumberOfWildCaughtFishAvaliable=NumberOfWildCaughtfishavailable;
         WaterType=Watertype;
-        DateOfCatch=DateofCatch; 
-    
-    emit WildCaughtFishDetailsUpdated (SpeciesName,  GeographicOrigin,  TypeOfEcosystem,  NumberOfWildCaughtFish,  WaterType, DateOfCatch,  WildCaughtFisher);
+        DateOfCatch=DateofCatch;
+    emit WildCaughtFishDetailsUpdated (SpeciesName,  GeographicOrigin,  TypeOfEcosystem,   NumberOfWildCaughtFishAvaliable,  WaterType, DateOfCatch,  WildCaughtFisher);
 
     }
 
     modifier onlyWildCaughtFishPurchaser{
-        require(RegistrationContract.WildCaughtFisherExists(msg.sender),
+        require(RegistrationContract.FishProcessorExists(msg.sender),
         "Sender not authorized.");
         _;
     } 
-    enum status{ Accepted, Rejected,Pending}
+
+    modifier onlyWildCaughtFishSeller{
+        require(RegistrationContract.WildCaughtFisherExists(msg.sender),
+        "Sender not authorized.");
+        _;
+    }
+    enum status{ Accepted, Rejected,Pending, Received}
 
     struct WildCaughtFishPurchaseOrderDetails{
         address WildCaughtFishPurchaser;
         uint NumberOfWildCaughtFishOrdered; 
-        string speciesname;
+        address WildCaughtFishSeller;
 
         status WildCaughtFishPurchaseOrderDetailsStatus;
     }
     mapping (bytes32=>WildCaughtFishPurchaseOrderDetails) public GetWildCaughtFishPurchaseOrderID;
-    event WildCaughtFishPurchaseOrderPlaced (bytes32 WildCaughtFishPurchaseOrderID);
-    function PlaceWildCaughtFishPurchaseOrder (address WildCaughtFishPurchaser, uint NumberOfWildCaughtFishOrdered,string memory speciesname) public onlyWildCaughtFishPurchaser{
-        require(RegistrationContract.WildCaughtFisherExists(WildCaughtFishPurchaser),
+    event WildCaughtFishPurchaseOrderPlaced (bytes32 WildCaughtFishPurchaseOrderID, address WildCaughtFishPurchaser, uint NumberOfWildCaughtFishOrdered, address WildCaughtFishSeller);
+    event WildCaughtFishPurchaseOrderReceived (bytes32 WildCaughtFishPurchaseOrderID, status newsTatus);
+    event WildCaughtFishOrderReceived (bytes32 WildCaughtFishPurchaseOrderID, status WildCaughtFishPurchaseOrderDetailsStatus);
+    function PlaceWildCaughtFishPurchaseOrder (address WildCaughtFishPurchaser, uint NumberOfWildCaughtFishOrdered,address WildCaughtFishSeller) public onlyWildCaughtFishPurchaser{
+        require(RegistrationContract.FishProcessorExists(WildCaughtFishPurchaser),
         "FishProcessor not authorized.");
-        bytes32 temp2=keccak256(abi.encodePacked(msg.sender, NumberOfWildCaughtFishOrdered,speciesname));
-        GetWildCaughtFishPurchaseOrderID [temp2]=WildCaughtFishPurchaseOrderDetails(WildCaughtFishPurchaser,NumberOfWildCaughtFishOrdered,speciesname, status.Pending);
-        emit WildCaughtFishPurchaseOrderPlaced(temp2);
+        bytes32 temp2=keccak256(abi.encodePacked(msg.sender, NumberOfWildCaughtFishOrdered,WildCaughtFishSeller));
+        GetWildCaughtFishPurchaseOrderID[temp2]=WildCaughtFishPurchaseOrderDetails(msg.sender,NumberOfWildCaughtFishOrdered,WildCaughtFishSeller, status.Pending);
+        emit WildCaughtFishPurchaseOrderPlaced(temp2,msg.sender,NumberOfWildCaughtFishOrdered,WildCaughtFishSeller);
     }
-    struct WildCaughtFishShipmentDetails{
-        bytes32 WildCaughtFishPurchaseOrderID;
-        address WildCaughtFishShipmentSender;
-        address WildCaughtFishShipmentReceiver;
-        uint NumberOfWildCaughtFishLots;
-        uint WildCaughtFishLotSize;
-       status WildCaughtFishShipmentDetailsStatus; 
-    }
-
-    modifier onlyWildCaughtFishShipmentSender{
-        require(RegistrationContract.WildCaughtFisherExists(msg.sender),
-        "Sender not authorized.");
-        _;
-    }
-    modifier onlyWildCaughtFishShipmentReceiver{
-        require(RegistrationContract.FishProcessorExists(msg.sender),
-        "Sender not authorized.");
-        _;
-    }
-    mapping (bytes32=>WildCaughtFishShipmentDetails) public GetWildCaughtFishShipmentID;
-    
-    event WildCaughtFishShipmentInitiated(bytes32 WildCaughtFishShipmentID, bytes32 WildCaughtFishPurchaseOrderID, address WildCaughtFishShipmentSender,address WildCaughtFishShipmentReceiver,uint NumberOfWildCaughtFishLots, uint WildCaughtFishLotSize);
-    event WildCaughtFishShipmentReceived(bytes32 WildCaughtFishShipmentID,status WildCaughtFishShipmentDetailsStatus );
-
-    function InitiateWildCaughtFishShipment(bytes32 WildCaughtFishShipmentID, bytes32 WildCaughtFishPurchaseOrderID, address WildCaughtFishShipmentSender,address WildCaughtFishShipmentReceiver,uint NumberOfWildCaughtFishLots, uint WildCaughtFishLotSize) public onlyWildCaughtFishShipmentSender{
-        require(RegistrationContract.WildCaughtFisherExists(WildCaughtFishShipmentSender),
-         "WildCaughtFishShipmentSender is not authorized.");
-        
-        emit WildCaughtFishShipmentInitiated (WildCaughtFishShipmentID, WildCaughtFishPurchaseOrderID,  WildCaughtFishShipmentSender, WildCaughtFishShipmentReceiver, NumberOfWildCaughtFishLots,WildCaughtFishLotSize); 
-    }
-    function ReceiveWildCaughtFishShipment(bytes32 WildCaughtFishShipmentID, bool Accepted) public onlyWildCaughtFishShipmentReceiver{
-        require (GetWildCaughtFishShipmentID[WildCaughtFishShipmentID].WildCaughtFishShipmentReceiver==msg.sender,
-        "WildCaughtFishShipmentReceiver is not authorized.");
-       require(GetWildCaughtFishShipmentID[WildCaughtFishShipmentID].WildCaughtFishShipmentDetailsStatus==status.Pending);
+    function ConfirmWildCaughtFishPurchaseOrder(bytes32 WildCaughtFishPurchaseOrderID, bool Accepted) public onlyWildCaughtFishSeller{
+        require (GetWildCaughtFishPurchaseOrderID[WildCaughtFishPurchaseOrderID].WildCaughtFishSeller==msg.sender,
+        "WildCaughtFishSeller is not authorized.");
+       require(GetWildCaughtFishPurchaseOrderID[WildCaughtFishPurchaseOrderID].WildCaughtFishPurchaseOrderDetailsStatus==status.Pending);
         if(Accepted){
-            GetWildCaughtFishShipmentID[WildCaughtFishShipmentID].WildCaughtFishShipmentDetailsStatus==status.Accepted;
+            GetWildCaughtFishPurchaseOrderID[WildCaughtFishPurchaseOrderID].WildCaughtFishPurchaseOrderDetailsStatus=status.Accepted;
         }
         else {
-            GetWildCaughtFishShipmentID[WildCaughtFishShipmentID].WildCaughtFishShipmentDetailsStatus==status.Rejected;
-         emit WildCaughtFishShipmentReceived(WildCaughtFishShipmentID,GetWildCaughtFishShipmentID[WildCaughtFishShipmentID].WildCaughtFishShipmentDetailsStatus);
+            GetWildCaughtFishPurchaseOrderID[WildCaughtFishPurchaseOrderID].WildCaughtFishPurchaseOrderDetailsStatus=status.Rejected;
+         
         }
-    
+        emit WildCaughtFishPurchaseOrderReceived(WildCaughtFishPurchaseOrderID,GetWildCaughtFishPurchaseOrderID[WildCaughtFishPurchaseOrderID].WildCaughtFishPurchaseOrderDetailsStatus);
     }
-        
+
+    function ReceiveWildCaughtFishOrder(bytes32 WildCaughtFishPurchaseOrderID, bool Received) public onlyWildCaughtFishPurchaser{
+        require(GetWildCaughtFishPurchaseOrderID[WildCaughtFishPurchaseOrderID]. WildCaughtFishPurchaser==msg.sender,
+        "Sender not authorized." );
+        require(keccak256(abi.encodePacked(GetWildCaughtFishPurchaseOrderID[WildCaughtFishPurchaseOrderID].WildCaughtFishPurchaseOrderDetailsStatus)) == keccak256(abi.encodePacked(status.Accepted)), "The shipment has not arrived yet");
+
+        if(Received){
+            GetWildCaughtFishPurchaseOrderID[WildCaughtFishPurchaseOrderID].WildCaughtFishPurchaseOrderDetailsStatus=status.Received;
+        }
+        else{
+            GetWildCaughtFishPurchaseOrderID[WildCaughtFishPurchaseOrderID].WildCaughtFishPurchaseOrderDetailsStatus=status.Received;
+        }
+        emit WildCaughtFishOrderReceived(WildCaughtFishPurchaseOrderID,GetWildCaughtFishPurchaseOrderID[WildCaughtFishPurchaseOrderID].WildCaughtFishPurchaseOrderDetailsStatus);
+    }
 }
 
 contract FishProcessing{
    
     string public ProcessedSpeciesName;
-    string public FishID;
-    string public IPFS_Hash;
-    uint public NumberOfFillets;
-    bytes32 ProcessedFishPCRReportID;
+    address public UnprocessedFishID;
+    address public IPFS_Hash;
     uint public DateOfProcessing;
     address registrationContract;
-    address public ProcessedFishPackageID;
-    
+    address public FishProcessor;
+    bytes32 ProcessedFishPackageID;
+    bytes32 PackageId;
 
     Registration RegistrationContract;
-    WildCaughtFish WildCaughtFishContract;
-    FarmedFish FarmedFishContract;
 
-  event ProcessedFishDetailsUpdated(string ProcessedSpeciesName, string FishID, string IPFS_Hash, uint NumberOfFillets,  bytes32  ProcessedFishPCRReportID, uint  DateOfProcessing, address  ProcessedFishPackageID);
-  constructor(address registration, address farmedfish, address wildcaughtfish,string memory ProcessedSpeciesname, string memory FishId, string memory IPFS_hash,uint  NumberOffillets, bytes32 ProcessedFishPCRReportId, uint  DateofProcessing, address  ProcessedFishPackageId) public {
+  event ProcessedFishDetailsUpdated(string ProcessedSpeciesName, address UnprocessedFishID, address IPFS_Hash, uint  DateOfProcessing);
+  constructor(address registration, string memory ProcessedSpeciesname, address UnprocessedFishId, address IPFS_hash,uint  DateofProcessing) public {
        RegistrationContract= Registration(registration);
-        FarmedFishContract= FarmedFish(farmedfish);
-        WildCaughtFishContract=WildCaughtFish(wildcaughtfish);
+       
         
         if(!RegistrationContract.FishProcessorExists(msg.sender))
           revert("Sender not authorized");
-        
+        registrationContract=registration;
+        FishProcessor=msg.sender;
         ProcessedSpeciesName=ProcessedSpeciesname;  
-        FishID=FishId;
+        UnprocessedFishID=UnprocessedFishId;
         IPFS_Hash=IPFS_hash;
-        NumberOfFillets=NumberOffillets;     
-        ProcessedFishPCRReportID=ProcessedFishPCRReportId;
         DateOfProcessing= DateofProcessing;
-        ProcessedFishPackageID=ProcessedFishPackageId;
         
-        emit ProcessedFishDetailsUpdated(ProcessedSpeciesName, FishID, IPFS_Hash, NumberOfFillets, ProcessedFishPCRReportID,   DateOfProcessing,ProcessedFishPackageID);
+        emit ProcessedFishDetailsUpdated(ProcessedSpeciesName, UnprocessedFishID, IPFS_Hash, DateOfProcessing);
+    }
+
+    struct ProcessedFishPackageDetails{
+        
+        address ProcessedFishPCRreportId;
+        string SpeciesName;
+        string CatchMethod;
+        uint FilletsInPacket;
+
+    }
+    enum status{
+        Created,
+        Failed
+    }
+
+    modifier onlyProcessor{
+        require(RegistrationContract.FishProcessorExists(msg.sender),
+        "Sender not authorized.");
+        _;
+    }
+    mapping (bytes32=>ProcessedFishPackageDetails) ProcessedFishpackageId;
+    event ProcessedFishPackageIDCreated(bytes32 ProcessedFishpackageId, address  ProcessedFishPCRreportId, string SpeciesName, string catchmethod, uint FilletsInPacket);
+    function CreateProcessedFishPackageID ( address ProcessedFishPCRreportId, string memory SpeciesName, string memory CatchMethod, uint FilletsInPacket) public onlyProcessor{
+        require(RegistrationContract.FishProcessorExists(FishProcessor),
+        "FishProcessor not authorized.");
+        bytes32 tenp=keccak256(abi.encodePacked(msg.sender, ProcessedFishPCRreportId, SpeciesName, CatchMethod, FilletsInPacket));
+        ProcessedFishpackageId [tenp]=ProcessedFishPackageDetails(ProcessedFishPCRreportId,SpeciesName,CatchMethod,FilletsInPacket);
+        PackageId=tenp;
+
+        emit ProcessedFishPackageIDCreated (tenp, ProcessedFishPCRreportId, SpeciesName, CatchMethod, FilletsInPacket);
+    }
+    function GetProcessedFishPackageID() public view returns(bytes32){
+        return PackageId;
     }
 } 
 
 contract FishDistribution{
+    
+    address fishprocessingContract;
+    bool Fine;
+    
     Registration RegistrationContract;
     FishProcessing FishProcessingContract;
 
-    constructor(address registration, address fishprocessing) public{
+    struct ProcessedFishPurchaseOrder{
+        address receiver;
+        bytes32 ProcessedFishPackageID;
+        address orderer;
+        uint QuantityofFishPackageOrdered;   
+        status ProcessedFishPurchaseOrderStatus;
+    }
+    mapping(bytes32=> ProcessedFishPurchaseOrder) public GetProcessedFishPurchaseOrderID;
 
-        RegistrationContract= Registration(registration);
-        FishProcessingContract= FishProcessing(fishprocessing);
+    modifier onlyDistributor{
+      require(RegistrationContract.DistributorExists(msg.sender),
+      "Sender not authorized."
+      );
+      _;
+    }   
+     
+      enum status{
+        Pending,
+        Accepted, 
+        Rejected,
+        Received
+    }
+   
+    modifier onlyOrderer{
+      require(RegistrationContract.DistributorExists(msg.sender),
+      "Sender not authorized."
+      );
+      _;
+    } 
     
+    modifier onlyReceiver{
+      require(RegistrationContract.FishProcessorExists(msg.sender),
+      "Sender not authorized."
+      );
+      _;
+    }   
+    event ProcessedFishPuchaseOrderPlaced (bytes32 ProcessedFishPurchaseOrderID, address ReceiverEA, bytes32 ProcessedFishPackageID, uint quantityoffishpackageordered, address OrdererEA);
+    event ConfirmProcessedFishPurchaseOrderStatus (bytes32 ProcessedFishPurchaseOrderID, status NewStatus);
+    event ProcessedFishOrderReceived (bytes32 ProcessedFishPurchaseOrderID);
+
+    constructor(address reigstration, address fishprocessing) public{
+        RegistrationContract = Registration(reigstration);
+        FishProcessingContract= FishProcessing(fishprocessing);
+        
         if(!RegistrationContract.DistributorExists(msg.sender))
             revert("Sender not authorized");
+            fishprocessingContract=fishprocessing;
     }
-    modifier onlyPOSender{
-        require(RegistrationContract.DistributorExists(msg.sender),
-    "Sender not authorized."
-    );
-    _;
-    }
-    modifier onlyPOReceiver{
-        require(RegistrationContract.FishProcessorExists(msg.sender),
-        "Sender not authorized.");
-        _;
-    }
-    modifier onlyShipmentSender{
-        require(RegistrationContract.FishProcessorExists(msg.sender),
-       "Sender not authorized." );
-        _;
-    }
-    modifier onlyShipmentReceiver{
-        require(RegistrationContract.DistributorExists(msg.sender),
-       "Sender not authorized." );
-        _;
-    }
-
-    enum status {Pending, Accepted,Rejected}
-    struct ProcessedFishPurchaseOrderDetails{address receiver; address buyer; uint NumberOfProcessedFishLotsOrdered; status PurchaseOrderStatus;}
-    mapping (bytes32=>ProcessedFishPurchaseOrderDetails) GetProcessedFishPurchaseOrderID;
-    event ProcessedFishPurchaseOrderCreated(bytes32 ProcessedFishPurchaseOrderID);
-    event ProcessedFishOrderConfirmed(bytes32 ProcessedFishPurchaseOrderID, status PurchaseOrderStatus);
-    function CreateProcessedFishPurchaseOrder(address receiver, address buyer, uint NumberOfProcessedFishLotsOrdered) public onlyPOSender{
-        require(RegistrationContract.DistributorExists(buyer),
-        "Fish Processor not authorized");
-        bytes32 temp3=keccak256(abi.encodePacked(msg.sender, now, address(this), NumberOfProcessedFishLotsOrdered));
-        GetProcessedFishPurchaseOrderID[temp3]=ProcessedFishPurchaseOrderDetails(receiver, msg.sender,NumberOfProcessedFishLotsOrdered, status.Pending);
-
-        emit ProcessedFishPurchaseOrderCreated(temp3);
-    }
-
-    function ConfirmProcessedFishOrder (bytes32 ProcessedFishPurchaseOrderID,bool Accepted ) public onlyPOReceiver{
-        require (GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].receiver==msg.sender,
-        "ProcessedFishPurchaseOrderReceiver is not authorized.");
+    //
+    function PlaceProcessedFishPurchaseOrder (address orderer, bytes32 ProcessedFishPackageId, uint quantityoffishpackageordered, address Receiver) public onlyOrderer {
+        require(RegistrationContract.DistributorExists(orderer),
+        "Distributor’s address is not valid");    
         
-        require (GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].PurchaseOrderStatus==status.Pending);
+        bytes32 temp=keccak256(abi.encodePacked(msg.sender,now,address(this), ProcessedFishPackageId , quantityoffishpackageordered, Receiver));
+        GetProcessedFishPurchaseOrderID[temp]= ProcessedFishPurchaseOrder (Receiver, ProcessedFishPackageId,  msg.sender, quantityoffishpackageordered,status.Pending);
+
+         emit ProcessedFishPuchaseOrderPlaced (temp,Receiver, ProcessedFishPackageId, quantityoffishpackageordered,msg.sender);
+    }
+    function ConfirmProcessedFishPurchaseOrder(bytes32 ProcessedFishPurchaseOrderID, bool Accepted) public onlyReceiver{
+        require(GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].receiver==msg.sender,
+        "The receiver of the order is not authorized");
+        require(GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].ProcessedFishPurchaseOrderStatus==status.Pending);
         if(Accepted){
-            (GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].PurchaseOrderStatus== status.Accepted);
+            GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].ProcessedFishPurchaseOrderStatus=status.Accepted;
         }
         else {
-            (GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].PurchaseOrderStatus== status.Rejected);
-
+            GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].ProcessedFishPurchaseOrderStatus=status.Rejected;
+         
         }
-        emit ProcessedFishOrderConfirmed (ProcessedFishPurchaseOrderID,GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].PurchaseOrderStatus);
+        emit ConfirmProcessedFishPurchaseOrderStatus(ProcessedFishPurchaseOrderID,GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].ProcessedFishPurchaseOrderStatus);
+    }   
+     function ReceiveProcessedFishOrder(bytes32 ProcessedFishPurchaseOrderID) public onlyOrderer{
+        require(GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].orderer==msg.sender,
+        "Sender not authorized." );
+        require(keccak256(abi.encodePacked(GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].ProcessedFishPurchaseOrderStatus)) == keccak256(abi.encodePacked(status.Accepted)), "The shipment has not arrived yet");
+
+        GetProcessedFishPurchaseOrderID[ProcessedFishPurchaseOrderID].ProcessedFishPurchaseOrderStatus=status.Received;
+        
+        emit ProcessedFishOrderReceived(ProcessedFishPurchaseOrderID);
     }
 
-    struct ProcessedFishShipmentDetails{
+    struct RetailerPurchaseOrderDetails{
+        address buyer;
+        address seller;
         bytes32 ProcessedFishPurchaseOrderID;
-        address Sender;
-        address Receiver;
-
-        status ProcessedFishPackgeShipmentStatus;
-    }
-
-    event ProcessedFishShipmentInitiated(bytes32 ProcessedFishPackageShipmentID);
-    mapping (bytes32=>ProcessedFishShipmentDetails) GetProcessedFishPackageShipmentID;
-    function InitiateProcessedFishShipment (bytes32 PackagedFishPurchaseOrderID, address Sender, address Receiver) public onlyShipmentSender{
-        require (RegistrationContract.FishProcessorExists(Sender),
-        "PackgedFishShipmentSender is not authorized ");
-        bytes32 temp4=keccak256(abi.encodePacked(now, address(this),PackagedFishPurchaseOrderID ));
-        GetProcessedFishPackageShipmentID[temp4]=ProcessedFishShipmentDetails(PackagedFishPurchaseOrderID, Sender, Receiver, status.Pending);
-
-        emit ProcessedFishShipmentInitiated(temp4); 
-
-    }
-
-    event ProcessedFishShipmentReceived (bytes32 ProcessedFishPackageShipmentID, status ProcessedFishPackgeShipmentStatus);
-
-    function ReceivePackagedFishShipment (bytes32 ProcessedFishPackageShipmentID,bool Accepted ) public onlyShipmentReceiver{
-        require (GetProcessedFishPackageShipmentID[ProcessedFishPackageShipmentID].Receiver==msg.sender,
-        "PackagedFishShipmentReceiver is not authorized.");
-        
-        require (GetProcessedFishPackageShipmentID[ProcessedFishPackageShipmentID].ProcessedFishPackgeShipmentStatus==status.Pending);
-        if(Accepted){
-            (GetProcessedFishPackageShipmentID[ProcessedFishPackageShipmentID].ProcessedFishPackgeShipmentStatus== status.Accepted);
-        }
-        else {
-            (GetProcessedFishPackageShipmentID[ProcessedFishPackageShipmentID].ProcessedFishPackgeShipmentStatus== status.Rejected);
-
-        }
-        emit ProcessedFishShipmentReceived (ProcessedFishPackageShipmentID,GetProcessedFishPackageShipmentID[ProcessedFishPackageShipmentID].ProcessedFishPackgeShipmentStatus);
-    }
-
-    struct RetailerOrderDetails{
-        address ProcessedFishPackageID; 
-        address Buyer;
-        address Seller;
-        uint NumberOfFishPackageOrdered;
-        
-        status RetailerOrderStatus;
-    }
-    modifier onlyBuyer{
-        require(RegistrationContract.RetailerExists(msg.sender),
-       "Sender not authorized." );
-        _;
-    }
-    modifier onlySeller{
-        require(RegistrationContract.DistributorExists(msg.sender),
-       "Sender not authorized." );
-        _;
-    }
-
-
-    event RetailerOrderCreated(bytes32 RetailerPurchaseOrderID);
-    mapping (bytes32=>RetailerOrderDetails) GetRetailerPurchaseOrderID;
-    function CreateRetailerPurchaseOrder(address ProcessedFishPackageID, address Buyer, address Seller, uint NumberOfFishPackageOrdered) public onlyBuyer{
-        require (RegistrationContract.RetailerExists(Buyer),
-        "Buyer is not authorized ");
-        bytes32 temp5= keccak256(abi.encodePacked(now, address(this),ProcessedFishPackageID));
-        GetRetailerPurchaseOrderID[temp5]=RetailerOrderDetails(ProcessedFishPackageID, Buyer, Seller, NumberOfFishPackageOrdered, status.Pending);
-
-        emit RetailerOrderCreated(temp5); 
-
-    }
-    event RetailerPurchaseOrderConfirmed (bytes32 RetailerPurchaseOrderID, status RetailerOrderStatus);
-
-    function ConfirmRetailerPurchaseOrder (bytes32 RetailerPurchaseOrderID,bool Accepted ) public onlySeller{
-        require (GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].Seller==msg.sender,
-        "Seller is not authorized.");
-        
-        require (GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].RetailerOrderStatus==status.Pending);
-        if(Accepted){
-            (GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].RetailerOrderStatus== status.Accepted);
-        }
-        else {
-            (GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].RetailerOrderStatus== status.Rejected);
-
-        }
-        emit RetailerPurchaseOrderConfirmed (RetailerPurchaseOrderID,GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].RetailerOrderStatus);
-    }
-
-    struct RetailerFishShipmentDetails{
-        bytes32 RetailerPurchaseOrderID;
-        address RetailerShipmentSender;
-        address RetailerShipmentReceiver;
         uint NumberOfFishPackagesOrdered;
         
-       status  RetailerFishFishShipmentDetailsStatus; 
+        status RetailerPurchaseOrderStatus;
     }
-
-    modifier onlyRetailerFishShipmentSender{
-        require(RegistrationContract.DistributorExists(msg.sender),
-        "Sender not authorized.");
-        _;
-    }
-    modifier onlyRetailerFishShipmentReceiver{
-        require(RegistrationContract.RetailerExists(msg.sender),
-        "Sender not authorized.");
-        _;
-    }
-    mapping (bytes32=>RetailerFishShipmentDetails) public GetRetailerFishShipmentID;
     
-    event RetailerFishShipmentInitiated(bytes32 RetailerPurchaseOrderID);
-    event RetailerFishShipmentReceived(bytes32 RetailerFishShipmentID,status RetailerFishFishShipmentDetailsStatus );
+    mapping(bytes32=>RetailerPurchaseOrderDetails) public GetRetailerPurchaseOrderID;
 
-    function InitiateRetailerFishShipment( bytes32 RetailerPurchaseOrderID, address RetailerShipmentSender,address RetailerShipmentReceiver,uint NumberOfFishPackagesOrdered) public onlyRetailerFishShipmentSender{
-        require(RegistrationContract.DistributorExists(RetailerShipmentSender),
-         "RetailerShipmentSender is not authorized.");
-        bytes32 temp6= keccak256(abi.encodePacked(now, address(this), RetailerPurchaseOrderID));
-        GetRetailerFishShipmentID[temp6]=RetailerFishShipmentDetails(RetailerPurchaseOrderID, RetailerShipmentSender, RetailerShipmentReceiver, NumberOfFishPackagesOrdered, status.Pending);
-        emit RetailerFishShipmentInitiated (temp6); 
+    modifier onlyBuyer{
+      require(RegistrationContract.RetailerExists(msg.sender),
+      "Sender not authorized."
+      );
+      _;
+    } 
+    
+    modifier onlySeller{
+      require(RegistrationContract.DistributorExists(msg.sender),
+      "Sender not authorized."
+      );
+      _;
+    }   
+    
+    event RetailerPuchaseOrderPlaced (bytes32 RetailerPurchaseOrderID, address Buyer,address Seller, bytes32 ProcessedFishPurchaseOrderID, uint NumberOfFishPackagesOrdered);
+    event RetailerPurchaseOrderConfirmed (bytes32 RetailerPurchaseOrderID, status newstatuS);
+    event RetailerOrderReceived (bytes32 RetailerPurchaseOrderID);
+
+    
+    function PlaceRetailerPurchaseOrder (address buyer, address seller,bytes32 ProcessedFishPurchaseOrderID,uint NumberOfFishPackagesOrdered) public onlyBuyer {
+        require(RegistrationContract.RetailerExists(buyer),
+        "Retailer’s address is not valid");    
+        
+        bytes32 temp1=keccak256(abi.encodePacked(msg.sender,now,address(this),  ProcessedFishPurchaseOrderID,  NumberOfFishPackagesOrdered, seller));
+        GetRetailerPurchaseOrderID[temp1]= RetailerPurchaseOrderDetails (msg.sender, seller, ProcessedFishPurchaseOrderID, NumberOfFishPackagesOrdered,status.Pending);
+
+         emit RetailerPuchaseOrderPlaced (temp1, msg.sender, seller, ProcessedFishPurchaseOrderID, NumberOfFishPackagesOrdered);
     }
-    function ReceiveRetailerFishShipment(bytes32 RetailerFishShipmentID, bool Accepted) public onlyRetailerFishShipmentReceiver{
-        require (GetRetailerFishShipmentID[RetailerFishShipmentID].RetailerShipmentReceiver==msg.sender,
-        "RetailerFishShipmentReceiver is not authorized.");
-       require(GetRetailerFishShipmentID[RetailerFishShipmentID].RetailerFishFishShipmentDetailsStatus==status.Pending);
-        if(Accepted){
-            GetRetailerFishShipmentID[RetailerFishShipmentID].RetailerFishFishShipmentDetailsStatus==status.Accepted;
-        }
-        else {
-            GetRetailerFishShipmentID[RetailerFishShipmentID].RetailerFishFishShipmentDetailsStatus==status.Rejected;
-         emit RetailerFishShipmentReceived(RetailerFishShipmentID,GetRetailerFishShipmentID[RetailerFishShipmentID].RetailerFishFishShipmentDetailsStatus);
-        }
+
+    function ConfirmRetailerPurchaseOrder(bytes32 RetailerPurchaseOrderID, bool accepted) public onlySeller{
+        require(GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].seller==msg.sender,
+                "Sender not authorized."
+                );
+    require(GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].RetailerPurchaseOrderStatus==status.Pending);
+    
+    if(accepted){
+        GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].RetailerPurchaseOrderStatus=status.Accepted;
     }
-        struct ConsumerOrderDetails{
-            bytes32 FishPackageID;
-            address consumer;
-            address seller;
-            status ConsumerOrderStatus;  
-        }
-        modifier onlyPurchaser{
-        require(RegistrationContract.ConsumerExists(msg.sender),
-        "Sender not authorized.");
-        _;
+    else{
+        GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].RetailerPurchaseOrderStatus=status.Rejected;
     }
-        modifier onlyseller{
+    
+    emit RetailerPurchaseOrderConfirmed(RetailerPurchaseOrderID, GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].RetailerPurchaseOrderStatus);
+}
+     function ReceiveRetailerOrder(bytes32 RetailerPurchaseOrderID) public onlyBuyer{
+        require(GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].buyer==msg.sender,
+        "Buyer not authorized." );
+        require(keccak256(abi.encodePacked(GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].RetailerPurchaseOrderStatus)) == keccak256(abi.encodePacked(status.Accepted)), "The shipment has not arrived yet");
+
+        GetRetailerPurchaseOrderID[RetailerPurchaseOrderID].RetailerPurchaseOrderStatus=status.Received;
+        
+        emit RetailerOrderReceived(RetailerPurchaseOrderID);
+    }
+
+    struct ConsumerOrderDetails{
+        bytes32 RetailerPurchaseOrderID;
+        address vendor;
+        address vendee;
+
+        status ConsumerOrderDetailsStatus;
+        }
+
+    mapping(bytes32=>ConsumerOrderDetails) public GetConsumerOrderID;
+
+    modifier onlyVendor{
         require(RegistrationContract.RetailerExists(msg.sender),
-        "Sender not authorized.");
+        "Sender not authorized."
+        );
         _;
     }
-        mapping (bytes32=>ConsumerOrderDetails) GetConsumerOrderID;
-        event FinalProductOrdered(bytes32 FishPackageID);
-        function OrderFinalProduct (bytes32 FishPackageID, address consumer, address seller) public onlyPurchaser{
-            require(RegistrationContract.ConsumerExists(consumer),
-         "Consumer is not authorized.");
-        bytes32 temp7= keccak256(abi.encodePacked(now, address(this), FishPackageID));
-        GetConsumerOrderID[temp7]=ConsumerOrderDetails(FishPackageID, consumer, seller, status.Pending);
-        emit FinalProductOrdered (temp7);
+
+    modifier onlyVendee{
+        require(RegistrationContract.ConsumerExists(msg.sender),
+        "Sender not autorized."
+        );
+        _;
     }
-        event FinalProductReceived(bytes32 ConsumerOrderID, status ConsumerOrderStatus);
-    function ReceiveFinalProduct(bytes32 ConsumerOrderID, bool Accepted) public onlyseller{
-        require (GetConsumerOrderID[ConsumerOrderID].seller==msg.sender,
-        "Retailer is not authorized.");
-       require(GetConsumerOrderID[ConsumerOrderID].ConsumerOrderStatus==status.Pending);
-        if(Accepted){
-            GetConsumerOrderID[ConsumerOrderID].ConsumerOrderStatus==status.Accepted;
+
+    event ConsumerOrderPlaced(bytes32 ConsumerOrderID, bytes32 RetailerPurchaseOrderID, address vendor, address vendee);
+    event ConsumerOrderConfirmed(bytes32 ConsumerOrderID, status newstatus);
+    event ConsumerOrderReceived(bytes32 ConsumerOrderID);
+
+    function PlaceConsumerOrder(bytes32 RetailerPurchaseOrderID, address vendor, address vendee) public onlyVendee{
+        require(RegistrationContract.ConsumerExists(vendee),
+        "Consumer is not authorized.");
+        bytes32 poiu=keccak256(abi.encodePacked(msg.sender, now, address(this), RetailerPurchaseOrderID));
+
+        GetConsumerOrderID[poiu]=ConsumerOrderDetails(RetailerPurchaseOrderID, vendor, msg.sender, status.Pending);
+
+        emit ConsumerOrderPlaced(poiu, RetailerPurchaseOrderID, vendor, msg.sender);
+    }
+    function ConfirmConsumerPurchaseOrder (bytes32 ConsumerOrderID, bool accepted) public onlyVendor{
+        require(GetConsumerOrderID[ConsumerOrderID].vendor==msg.sender,
+        "FishSeedsCompany is not authorized.");
+
+        require(GetConsumerOrderID[ConsumerOrderID].ConsumerOrderDetailsStatus==status.Pending);
+        if(accepted){
+            GetConsumerOrderID[ConsumerOrderID].ConsumerOrderDetailsStatus=status.Accepted;
         }
         else {
-            GetConsumerOrderID[ConsumerOrderID].ConsumerOrderStatus==status.Rejected;
-         emit FinalProductReceived(ConsumerOrderID,GetConsumerOrderID[ConsumerOrderID].ConsumerOrderStatus);
+            GetConsumerOrderID[ConsumerOrderID].ConsumerOrderDetailsStatus=status.Rejected;
         }
+        emit ConsumerOrderConfirmed(ConsumerOrderID, GetConsumerOrderID[ConsumerOrderID].ConsumerOrderDetailsStatus);
+    
+    }
+        
+
+    function ReceiveConsumerOrder(bytes32 ConsumerOrderID) public onlyVendee{
+        require(GetConsumerOrderID[ConsumerOrderID].vendee==msg.sender,
+        "Sender not authorized." );
+        require(keccak256(abi.encodePacked(GetConsumerOrderID[ConsumerOrderID].ConsumerOrderDetailsStatus)) == keccak256(abi.encodePacked(status.Accepted)), "The shipment has not arrived yet");
+
+        GetConsumerOrderID[ConsumerOrderID].ConsumerOrderDetailsStatus=status.Received;
+        
+        emit ConsumerOrderReceived(ConsumerOrderID);
+    } 
+
+    event FineStatusCreated (address FishProcessor, bool fineStatus);
+
+    function CreateFineResult(uint NumberOfViolations, uint AcceptabeleNumberofViolations,address FishProcessor)public{
+    require (RegistrationContract.isFDA(msg.sender)==true,"only FDA can perform this.");
+ 
+    Fine=false;
+        
+        if((NumberOfViolations)>=AcceptabeleNumberofViolations)
+         {
+            Fine=true;
+        }
+    
+    emit FineStatusCreated (FishProcessor,Fine);
     
     }   
 }
-
-    
-
